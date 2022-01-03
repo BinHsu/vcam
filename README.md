@@ -1,6 +1,6 @@
-#vcamX
+# vcamX
 
-##VCam will output compressed stream
+## VCam will output compressed stream
 
 please refer to the following link to build https://github.com/sysprog21/vcam
 
