@@ -11,6 +11,7 @@
 #include "device.h"
 #include "fb.h"
 #include "videobuf.h"
+#include "libx.h"
 
 extern const char *vcam_dev_name;
 extern unsigned char allow_pix_conversion;
@@ -504,6 +505,30 @@ static inline void yuyv_to_rgb24_one_pix(void *dst,
     rgb[2] = (unsigned char) b;
 }
 
+void compress_buffer(void *dst_ptr, size_t size)
+{
+    void *end = NULL, *tmp_ptr = vmalloc(size);
+    uint32_t compressed_size = 0;
+    if (!tmp_ptr) {
+        pr_err("Failed to allocate!");
+        return;
+    }
+
+    x_init();
+    end = x_compress(dst_ptr, size, tmp_ptr);
+    compressed_size = (char *) end - (char *) tmp_ptr;
+    if (size < compressed_size + sizeof(compressed_size)) {
+        pr_err("Failed to compress!");
+        vfree(tmp_ptr);
+        return;
+    }
+
+    *((uint32_t*)dst_ptr) = compressed_size;
+    dst_ptr += sizeof(compressed_size);
+    memcpy(dst_ptr, tmp_ptr, compressed_size);
+    vfree(tmp_ptr);
+}
+
 static void submit_noinput_buffer(struct vcam_out_buffer *buf,
                                   struct vcam_device *dev)
 {
@@ -511,6 +536,7 @@ static void submit_noinput_buffer(struct vcam_out_buffer *buf,
     int32_t yuyv_tmp;
     unsigned char *yuyv_helper = (unsigned char *) &yuyv_tmp;
     void *vbuf_ptr = vb2_plane_vaddr(&buf->vb.vb2_buf, 0);
+    void *vbufDst_ptr = vbuf_ptr;
     int32_t *yuyv_ptr = vbuf_ptr;
     size_t size = dev->output_format.sizeimage;
     size_t rowsize = dev->output_format.bytesperline;
@@ -543,6 +569,8 @@ static void submit_noinput_buffer(struct vcam_out_buffer *buf,
         if (rows % 255)
             memset(vbuf_ptr, 0xff, rowsize * (rows % 255));
     }
+
+    compress_buffer(vbufDst_ptr, size);
 
     buf->vb.vb2_buf.timestamp = ktime_get_ns();
     vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
@@ -675,6 +703,7 @@ static void submit_copy_buffer(struct vcam_out_buffer *out_buf,
                                struct vcam_device *dev)
 {
     void *in_vbuf_ptr, *out_vbuf_ptr;
+    size_t size = dev->output_format.sizeimage;
 
     in_vbuf_ptr = in_buf->data;
     if (!in_vbuf_ptr) {
@@ -724,6 +753,9 @@ static void submit_copy_buffer(struct vcam_out_buffer *out_buf,
             }
         }
     }
+
+    compress_buffer(out_vbuf_ptr, size);
+
     out_buf->vb.vb2_buf.timestamp = ktime_get_ns();
     vb2_buffer_done(&out_buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 }

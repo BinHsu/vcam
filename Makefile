@@ -1,5 +1,5 @@
 target = vcam
-vcam-objs = module.o control.o device.o videobuf.o fb.o
+vcam-objs = module.o control.o device.o videobuf.o fb.o libx.o
 obj-m = $(target).o
 
 CFLAGS_utils = -O2 -Wall -Wextra -pedantic -std=c99
